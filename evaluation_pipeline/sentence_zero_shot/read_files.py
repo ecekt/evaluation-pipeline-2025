@@ -12,12 +12,14 @@ from transformers import AutoImageProcessor
 if TYPE_CHECKING:
     from argparse import Namespace
     from transformers.image_processing_utils import BaseImageProcessor
+    from datasets import Dataset
 
 
 def read_files(args: Namespace) -> list[dict[str, str]]:
-    """Takes the path to a data directory and a task, reads the JSONL datafiles
-    in the directory and returns a list of dictionaries containing all the
-    information used by the evaluation.
+    """Takes the path to a data directory and a task, reads the
+    JSONL datafiles in the directory and returns a list of
+    dictionaries containing all the information used by the
+    evaluation.
 
     Args:
         args(Namespace): A class containing all the information
@@ -25,8 +27,8 @@ def read_files(args: Namespace) -> list[dict[str, str]]:
             path, task name, etc.
 
     Returns:
-        list[dict[str, str]]: A list of dictionaries containing the information
-            to evaluate the given task.
+        list[dict[str, str]]: A list of dictionaries containing
+            the information to evaluate the given task.
     """
     data = []
     images = None
@@ -47,16 +49,24 @@ def read_files(args: Namespace) -> list[dict[str, str]]:
     return data
 
 
-def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool, images: Any, image_processor: Any) -> dict[str, str]:
-    """This function takes a line of a JSONL file and returns a dictionary of terms to be used by the evaluation.
+def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool, images: Dataset | None, image_processor: BaseImageProcessor | None) -> dict[str, str]:
+    """This function takes a line of a JSONL file and returns a
+    dictionary of terms to be used by the evaluation.
 
     Args:
         line(str): A JSONL line from a datafile.
-        file_name(pathlib.Path): The file name the line comes from.
-        task(str): The task we are evaluating, this tells us what needs to be imported.
+        file_name(pathlib.Path): The file name the line comes
+            from.
+        task(str): The task we are evaluating, this tells us
+            what needs to be imported.
+        images(Dataset | None): The collection of images
+            associated with the dataset.
+        image_processor(BaseImageProcessor): The image
+            processor of the model being tested.
 
     Returns:
-        dict[str, str]: A dictionary with values used for evaluation
+        dict[str, str]: A dictionary with values used for
+            evaluation.
     """
 
     raw_dict = json.loads(line.strip())
@@ -78,14 +88,19 @@ def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: 
 
 
 def decode_blimp(raw_dict: dict[str, Any], file_name: pathlib.Path) -> dict[str, str]:
-    """This function takes a dictionary of a single datapoint of a BLiMP datafile and returns a dictionary of terms to be used by the evaluation.
+    """This function takes a dictionary of a single datapoint
+    of a BLiMP datafile and returns a dictionary of terms to be
+    used by the evaluation.
 
     Args:
-        raw_dict(dict[str, Any]): A dictionary from a single datapoint of a BLiMP datafile.
-        file_name(pathlib.Path): When no UID is mentioned, we take the file name.
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of a BLiMP datafile.
+        file_name(pathlib.Path): When no UID is mentioned, we
+            take the file name.
 
     Returns:
-        dict[str, str]: A dictionary with values used for evaluation
+        dict[str, str]: A dictionary with values used for
+            evaluation.
     """
     if "field" in raw_dict:
         pair = {
@@ -114,15 +129,17 @@ def decode_blimp(raw_dict: dict[str, Any], file_name: pathlib.Path) -> dict[str,
 
 
 def decode_ewok(raw_dict: dict[str, Any], full_sentence_scores: bool) -> dict[str, str]:
-    """This function takes a dictionary of a single datapoint of a EWoK datafile
-    and returns a dictionary of terms to be used by the evaluation.
+    """This function takes a dictionary of a single datapoint
+    of a EWoK datafile and returns a dictionary of terms to be
+    used by the evaluation.
 
     Args:
-        raw_dict(dict[str, Any]): A dictionary from a single datapoint of a
-            EWoK datafile.
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of a EWoK datafile.
 
     Returns:
-        dict[str, str]: A dictionary with values used for evaluation
+        dict[str, str]: A dictionary with values used for
+            evaluation.
     """
     if full_sentence_scores:
         completions = [" ".join([raw_dict["Context1"], raw_dict["Target1"]]), " ".join([raw_dict["Context1"], raw_dict["Target2"]])]
@@ -143,15 +160,19 @@ def decode_ewok(raw_dict: dict[str, Any], full_sentence_scores: bool) -> dict[st
 
 
 def decode_wug_adj_nominalization(raw_dict: dict[str, Any]) -> dict[str, str]:
-    """This function takes a dictionary of a single datapoint of the wug test
-    datafile and returns a dictionary of terms to be used by the evaluation.
+    """This function takes a dictionary of a single datapoint
+    of the wug test datafile and returns a dictionary of terms
+    to be used by the evaluation.
 
     Args:
-        raw_dict(dict[str, Any]): A dictionary from a single datapoint of a BLiMP datafile.
-        file_name(pathlib.Path): When no UID is mentioned, we take the file name.
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of a BLiMP datafile.
+        file_name(pathlib.Path): When no UID is mentioned, we
+            take the file name.
 
     Returns:
-        dict[str, str]: A dictionary with values used for evaluation
+        dict[str, str]: A dictionary with values used for
+            evaluation.
     """
     pair = {
         "sentences": raw_dict["sentences"].split('\t'),
@@ -166,15 +187,17 @@ def decode_wug_adj_nominalization(raw_dict: dict[str, Any]) -> dict[str, str]:
 
 
 def decode_entity_tracking(raw_dict: dict[str, Any], file_name: pathlib.Path) -> dict[str, str]:
-    """This function takes a dictionary of a single datapoint of an Entity Tracking datafile
-    and returns a dictionary of terms to be used by the evaluation.
+    """This function takes a dictionary of a single datapoint
+    of an Entity Tracking datafile and returns a dictionary of
+    terms to be used by the evaluation.
 
     Args:
-        raw_dict(dict[str, Any]): A dictionary from a single datapoint of a
-            Entity Tracking datafile.
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of an Entity Tracking datafile.
 
     Returns:
-        dict[str, str]: A dictionary with values used for evaluation
+        dict[str, str]: A dictionary with values used for
+            evaluation.
     """
     subset = f'{file_name.stem}_{raw_dict["numops"]}_ops'
     pair = {
@@ -188,22 +211,22 @@ def decode_entity_tracking(raw_dict: dict[str, Any], file_name: pathlib.Path) ->
     return pair
 
 
-def decode_vqa(raw_dict: dict[str, Any], images: Any, image_processor: BaseImageProcessor) -> dict[str, str]:
+def decode_vqa(raw_dict: dict[str, Any], images: Dataset, image_processor: BaseImageProcessor) -> dict[str, str]:
     """This function takes a dictionary of a single datapoint
-    of the VQA dataset and the associated image and
-    returns a dictionary of terms to be used by the evaluation.
+    of the VQA dataset and the associated image and returns a
+    dictionary of terms to be used by the evaluation.
 
     Args:
         raw_dict(dict[str, Any]): A dictionary from a single
             datapoint of the VQA datafile.
-        images[Any]: The collection of images associated of
+        images(Dataset): The collection of images associated of
             the VQA dataset.
         image_processor(BaseImageProcessor): The image
             processor of the model being tested.
 
     Returns:
         dict[str, str]: A dictionary with values used for
-            evaluation
+            evaluation.
     """
     pair = {
         "sentences": [" ".join([raw_dict["question"], raw_dict["target_ans"]])] + [" ".join([raw_dict["question"], answer]) for answer in raw_dict["distractors"]],
