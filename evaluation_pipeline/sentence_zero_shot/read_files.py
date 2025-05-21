@@ -1,38 +1,53 @@
 # File: read_files.py
 # -------------------
+from __future__ import annotations
 
 import json
 import pathlib
-from typing import Any
+from typing import Any, TYPE_CHECKING
+from datasets import load_dataset
+import aiohttp
+from transformers import AutoImageProcessor
+
+if TYPE_CHECKING:
+    from argparse import Namespace
+    from transformers.image_processing_utils import BaseImageProcessor
 
 
-def read_files(data_path: pathlib.Path, task: str, full_sentence_scores: bool) -> list[dict[str, str]]:
+def read_files(args: Namespace) -> list[dict[str, str]]:
     """Takes the path to a data directory and a task, reads the JSONL datafiles
     in the directory and returns a list of dictionaries containing all the
     information used by the evaluation.
 
     Args:
-        data_path(pathlib.Path): The path to a data directory containing JSONL
-            files.
-        task(str): The task of the data (for example blimp).
+        args(Namespace): A class containing all the information
+            necessary to retrive the data. For example: data
+            path, task name, etc.
 
     Returns:
         list[dict[str, str]]: A list of dictionaries containing the information
             to evaluate the given task.
     """
     data = []
-    for filename in data_path.iterdir():
+    images = None
+    image_processor = None
+    if args.images_path is not None:
+        images = load_dataset(args.images_path, split=args.image_split, storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
+        image_processor = AutoImageProcessor.from_pretrained(args.model_path_or_name)
+    for filename in args.data_path.iterdir():
         if filename.suffix != ".jsonl":
             continue
 
         with filename.open("r") as f:
             for line in f:
-                data.append(decode(line, filename, task, full_sentence_scores))
+                data.append(decode(line, filename, args.task, args.full_sentence_scores, images, image_processor))
+
+    del images
 
     return data
 
 
-def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool) -> dict[str, str]:
+def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool, images: Any, image_processor: Any) -> dict[str, str]:
     """This function takes a line of a JSONL file and returns a dictionary of terms to be used by the evaluation.
 
     Args:
@@ -54,6 +69,8 @@ def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: 
         data_dict = decode_wug_adj_nominalization(raw_dict)
     elif task == "entity_tracking":
         data_dict = decode_entity_tracking(raw_dict, file_name)
+    elif task == "vqa":
+        data_dict = decode_vqa(raw_dict, images, image_processor)
     else:
         raise NotImplementedError(f"The task {task} is not implemented! Please implement it or choose one of the implemented tasks.")
 
@@ -110,7 +127,7 @@ def decode_ewok(raw_dict: dict[str, Any], full_sentence_scores: bool) -> dict[st
     if full_sentence_scores:
         completions = [" ".join([raw_dict["Context1"], raw_dict["Target1"]]), " ".join([raw_dict["Context1"], raw_dict["Target2"]])]
     else:
-        completions = [raw_dict["Target1"], raw_dict["Target2"]]
+        completions = [" " + raw_dict["Target1"], " " + raw_dict["Target2"]]
     pair = {
         "sentences": [" ".join([raw_dict["Context1"], raw_dict["Target1"]]), " ".join([raw_dict["Context1"], raw_dict["Target2"]])],
         "prefixes": [raw_dict["Context1"], raw_dict["Context2"]],
@@ -149,7 +166,7 @@ def decode_wug_adj_nominalization(raw_dict: dict[str, Any]) -> dict[str, str]:
 
 
 def decode_entity_tracking(raw_dict: dict[str, Any], file_name: pathlib.Path) -> dict[str, str]:
-    """This function takes a dictionary of a single datapoint of a Entity Tracking datafile
+    """This function takes a dictionary of a single datapoint of an Entity Tracking datafile
     and returns a dictionary of terms to be used by the evaluation.
 
     Args:
@@ -165,7 +182,36 @@ def decode_entity_tracking(raw_dict: dict[str, Any], file_name: pathlib.Path) ->
         "prefixes": [raw_dict["input_prefix"] for _ in raw_dict["options"]],
         "completions" : [option for option in raw_dict["options"]],
         "label" : 0,
-        "UID" : subset
+        "UID" : subset,
+    }
+
+    return pair
+
+
+def decode_vqa(raw_dict: dict[str, Any], images: Any, image_processor: BaseImageProcessor) -> dict[str, str]:
+    """This function takes a dictionary of a single datapoint
+    of the VQA dataset and the associated image and
+    returns a dictionary of terms to be used by the evaluation.
+
+    Args:
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of the VQA datafile.
+        images[Any]: The collection of images associated of
+            the VQA dataset.
+        image_processor(BaseImageProcessor): The image
+            processor of the model being tested.
+
+    Returns:
+        dict[str, str]: A dictionary with values used for
+            evaluation
+    """
+    pair = {
+        "sentences": [" ".join([raw_dict["question"], raw_dict["target_ans"]])] + [" ".join([raw_dict["question"], answer]) for answer in raw_dict["distractors"]],
+        "prefixes": [raw_dict["question"] for _ in range(len(raw_dict["distractors"]) + 1)],
+        "completions": [" " + raw_dict["target_ans"]] + [" " + answer for answer in raw_dict["distractors"]],
+        "label": 0,
+        "UID": "VQA",
+        "image": image_processor(images[raw_dict["idx_in_hf_dataset"]]["image"].convert("RGB"), return_tensors="pt")["pixel_values"],
     }
 
     return pair

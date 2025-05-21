@@ -1,5 +1,6 @@
 # File: data_utils.py
 # -------------------
+from __future__ import annotations
 
 from transformers import AutoTokenizer
 import torch
@@ -24,7 +25,7 @@ class CompletionRankingDataset(Dataset):
                 self.tokenizer.pad_token_id = self.tokenizer.cls_token_id
 
         # Load and process the data
-        self.data = read_files(args.data_path, args.task, args.full_sentence_scores)
+        self.data = read_files(args)
 
     def __len__(self):
         return len(self.data)

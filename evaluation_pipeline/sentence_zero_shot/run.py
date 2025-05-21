@@ -1,5 +1,6 @@
 # File: run_zero_shot.py
 # ----------------------
+from __future__ import annotations
 
 import pathlib
 import json
@@ -19,13 +20,16 @@ def _parse_arguments():
     parser = argparse.ArgumentParser()
 
     # Required parameters
-    parser.add_argument("--data_path", default="", type=pathlib.Path, help="Path to the data directory")
-    parser.add_argument("--output_dir", default="results", type=pathlib.Path, help="Path to the data directory")
-    parser.add_argument("--task", default="blimp", type=str, help="The task that is being evaluated.",
-                        choices=["blimp", "ewok", "entity_tracking", "wug"])
+    parser.add_argument("--data_path", required=True, type=pathlib.Path, help="Path to the data directory")
+    parser.add_argument("--task", required=True, type=str, help="The task that is being evaluated.", choices=["blimp", "ewok", "entity_tracking", "wug", "vqa"])
+    parser.add_argument("--model_path_or_name", required=True, type=str, help="Path to the model to evaluate.")
+    parser.add_argument("--backend", required=True, type=str, help="The evaluation backend strategy", choices=["mlm", "causal", "mntp", "enc_dec_mask", "enc_dec_prefix"])
 
-    parser.add_argument("--model_path_or_name", default="ltg/gpt-bert-babylm-small", type=str, help="Path to the model to evaluate.")
-    parser.add_argument("--backend", default="mlm", type=str, help="The evaluation backend strategy", choices=["mlm", "causal", "mntp", "enc_dec_mask", "enc_dec_prefix"])
+    parser.add_argument("--output_dir", default="results", type=pathlib.Path, help="Path to the data directory")
+    parser.add_argument("--images_path", default=None, type=str, help="Path or HuggingFace repository name to the images for the task.")
+    parser.add_argument("--image_split", default=None, type=str, help="The data split from a HuggingFace repository to use for the images source.")
+
+    parser.add_argument("--revision_name", default=None, type=str, help="Name of the checkpoint/version of the model to test. (If None, the main will be used)")
 
     parser.add_argument("--min_temperature", default=1.0, type=float, help="Minimum temperature to apply to the logits.")
     parser.add_argument("--max_temperature", default=None, type=float, help="Maximum temperature to apply to the logits. If None, onlny the minimum temperature will be considered.")
@@ -34,7 +38,6 @@ def _parse_arguments():
     parser.add_argument("--non_causal_batch_size", default=64, type=int, help="Mini-batch size to process each batch of inputs involving masked tokens")
     parser.add_argument("--full_sentence_scores", action="store_true", help="Whether to use the entire sentence to calculate the sentence scores rather than just the completion. (Only implemented for EWoK)")
     parser.add_argument("--save_predictions", action="store_true", help="Whether or not to save predictions.")
-    parser.add_argument("--revision_name", default=None, type=str, help="Name of the checkpoint/version of the model to test. (If None, the main will be used)")
 
     return parser.parse_args()
 
