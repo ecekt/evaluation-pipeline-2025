@@ -2,7 +2,7 @@
 # -------------------
 from __future__ import annotations
 
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, AutoImageProcessor
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -356,8 +356,12 @@ class CompletionRankingDataset(Dataset):
         sentence_dict = {"sentences" : data_dict["sentences"], "prefixes": data_dict["prefixes"], "completions" : data_dict["completions"]}
         label = data_dict["label"]
         uid = data_dict["UID"]
+        if "image" in data_dict.keys():
+            image = data_dict["image"]
+        else:
+            image = None
 
-        metadata_keys = [key for key in data_dict if key not in ["sentences", "completions", "prefixes", "label"]]
+        metadata_keys = [key for key in data_dict if key not in ["sentences", "completions", "prefixes", "label", "image"]]
         metadata = {key : data_dict[key] for key in metadata_keys}
 
         if self.backend == "causal":
@@ -371,7 +375,7 @@ class CompletionRankingDataset(Dataset):
         elif self.backend == "enc_dec_prefix":
             processed_sentence_dict = self.process_enc_dec_prefix_sentences(sentence_dict)
 
-        return sentence_dict, processed_sentence_dict, label, metadata, uid
+        return sentence_dict, processed_sentence_dict, label, metadata, uid, image
 
 
 def get_collate_fn(args: argparse.ArgumentParser, pad_idx: int):
@@ -382,17 +386,21 @@ def get_collate_fn(args: argparse.ArgumentParser, pad_idx: int):
         args (argparse.ArgumentParser): Arguments to determine model backend
         pad_idx (int): What token to use as the padding index
     """
+
+    if args.images_path is not None:
+        image_processor = AutoImageProcessor.from_pretrained(args.model_path_or_name, revision=args.revision_name)
+
     if args.backend == "causal":
-        return get_causal_collate_fn(pad_idx)
+        return get_causal_collate_fn(pad_idx, image_processor)
     elif args.backend in ["mlm", "mntp"]:
-        return get_mlm_collate_fn(pad_idx)
+        return get_mlm_collate_fn(pad_idx, image_processor)
     elif args.backend == "enc_dec_mask":
-        return get_enc_dec_mask_collate_fn(pad_idx)
+        return get_enc_dec_mask_collate_fn(pad_idx, image_processor)
     elif args.backend == "enc_dec_prefix":
-        return get_enc_dec_prefix_collate_fn(pad_idx)
+        return get_enc_dec_prefix_collate_fn(pad_idx, image_processor)
 
 
-def get_causal_collate_fn(pad_idx):
+def get_causal_collate_fn(pad_idx, image_processor):
     def collate_fn(batch):
         # First pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("tokens")])
@@ -417,11 +425,17 @@ def get_causal_collate_fn(pad_idx):
         labels = [item[2] for item in batch]
         metadatas = [item[3] for item in batch]
         uids = [item[4] for item in batch]
-        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids
+        images = [item[5] for item in batch]
+        if all(image is None for image in images):
+            images = None
+        else:
+            images = image_processor(images, return_tensors="pt")["pixel_values"]
+            print(images.shape)
+        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
     return collate_fn
 
 
-def get_mlm_collate_fn(pad_idx):
+def get_mlm_collate_fn(pad_idx, image_processor):
     def collate_fn(batch):
         # Pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("tokens")])
@@ -453,11 +467,16 @@ def get_mlm_collate_fn(pad_idx):
         labels = [item[2] for item in batch]
         metadatas = [item[3] for item in batch]
         uids = [item[4] for item in batch]
-        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids
+        images = [item[5] for item in batch]
+        if all(image is None for image in images):
+            images = None
+        else:
+            images = image_processor(images, return_tensors="pt")["pixel_values"]
+        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
     return collate_fn
 
 
-def get_enc_dec_mask_collate_fn(pad_idx):
+def get_enc_dec_mask_collate_fn(pad_idx, image_processor):
     def collate_fn(batch):
         # Pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("enc_tokens")])
@@ -493,11 +512,16 @@ def get_enc_dec_mask_collate_fn(pad_idx):
         labels = [item[2] for item in batch]
         metadatas = [item[3] for item in batch]
         uids = [item[4] for item in batch]
-        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids
+        images = [item[5] for item in batch]
+        if all(image is None for image in images):
+            images = None
+        else:
+            images = image_processor(images, return_tensors="pt")["pixel_values"]
+        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
     return collate_fn
 
 
-def get_enc_dec_prefix_collate_fn(pad_idx):
+def get_enc_dec_prefix_collate_fn(pad_idx, image_processor):
     def collate_fn(batch):
         # First pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("dec_tokens")])
@@ -527,7 +551,12 @@ def get_enc_dec_prefix_collate_fn(pad_idx):
         labels = [item[2] for item in batch]
         metadatas = [item[3] for item in batch]
         uids = [item[4] for item in batch]
-        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids
+        images = [item[5] for item in batch]
+        if all(image is None for image in images):
+            images = None
+        else:
+            images = image_processor(images, return_tensors="pt")["pixel_values"]
+        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
     return collate_fn
 
 
