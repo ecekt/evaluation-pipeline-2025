@@ -7,11 +7,9 @@ import pathlib
 from typing import Any, TYPE_CHECKING
 from datasets import load_dataset
 import aiohttp
-from transformers import AutoImageProcessor
 
 if TYPE_CHECKING:
     from argparse import Namespace
-    from transformers.image_processing_utils import BaseImageProcessor
     from datasets import Dataset
 
 
@@ -32,24 +30,22 @@ def read_files(args: Namespace) -> list[dict[str, str]]:
     """
     data = []
     images = None
-    image_processor = None
     if args.images_path is not None:
         images = load_dataset(args.images_path, split=args.image_split, storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
-        image_processor = AutoImageProcessor.from_pretrained(args.model_path_or_name)
     for filename in args.data_path.iterdir():
         if filename.suffix != ".jsonl":
             continue
 
         with filename.open("r") as f:
             for line in f:
-                data.append(decode(line, filename, args.task, args.full_sentence_scores, images, image_processor))
+                data.append(decode(line, filename, args.task, args.full_sentence_scores, images))
 
     del images
 
     return data
 
 
-def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool, images: Dataset | None, image_processor: BaseImageProcessor | None) -> dict[str, str]:
+def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: bool, images: Dataset | None) -> dict[str, str]:
     """This function takes a line of a JSONL file and returns a
     dictionary of terms to be used by the evaluation.
 
@@ -60,9 +56,8 @@ def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: 
         task(str): The task we are evaluating, this tells us
             what needs to be imported.
         images(Dataset | None): The collection of images
-            associated with the dataset.
-        image_processor(BaseImageProcessor): The image
-            processor of the model being tested.
+            associated with the dataset. If None, then there
+            are no images associated with the dataset.
 
     Returns:
         dict[str, str]: A dictionary with values used for
@@ -80,7 +75,9 @@ def decode(line: str, file_name: pathlib.Path, task: str, full_sentence_scores: 
     elif task == "entity_tracking":
         data_dict = decode_entity_tracking(raw_dict, file_name)
     elif task == "vqa":
-        data_dict = decode_vqa(raw_dict, images, image_processor)
+        data_dict = decode_vqa(raw_dict, images)
+    elif task == "winoground":
+        data_dict = decode_winoground(raw_dict, images)
     else:
         raise NotImplementedError(f"The task {task} is not implemented! Please implement it or choose one of the implemented tasks.")
 
@@ -211,7 +208,7 @@ def decode_entity_tracking(raw_dict: dict[str, Any], file_name: pathlib.Path) ->
     return pair
 
 
-def decode_vqa(raw_dict: dict[str, Any], images: Dataset, image_processor: BaseImageProcessor) -> dict[str, str]:
+def decode_vqa(raw_dict: dict[str, Any], images: Dataset) -> dict[str, str]:
     """This function takes a dictionary of a single datapoint
     of the VQA dataset and the associated image and returns a
     dictionary of terms to be used by the evaluation.
@@ -221,8 +218,6 @@ def decode_vqa(raw_dict: dict[str, Any], images: Dataset, image_processor: BaseI
             datapoint of the VQA datafile.
         images(Dataset): The collection of images associated of
             the VQA dataset.
-        image_processor(BaseImageProcessor): The image
-            processor of the model being tested.
 
     Returns:
         dict[str, str]: A dictionary with values used for
@@ -234,7 +229,37 @@ def decode_vqa(raw_dict: dict[str, Any], images: Dataset, image_processor: BaseI
         "completions": [" " + raw_dict["target_ans"]] + [" " + answer for answer in raw_dict["distractors"]],
         "label": 0,
         "UID": "VQA",
-        "image": image_processor(images[raw_dict["idx_in_hf_dataset"]]["image"].convert("RGB"), return_tensors="pt")["pixel_values"],
+        "image": images[raw_dict["idx_in_hf_dataset"]]["image"].convert("RGB"),
+    }
+
+    return pair
+
+
+def decode_winoground(raw_dict: dict[str, Any], images: Dataset) -> dict[str, str]:
+    """This function takes a dictionary of a single datapoint
+    of the VQA dataset and the associated image and returns a
+    dictionary of terms to be used by the evaluation.
+
+    Args:
+        raw_dict(dict[str, Any]): A dictionary from a single
+            datapoint of the VQA datafile.
+        images(Dataset): The collection of images associated of
+            the VQA dataset.
+
+    Returns:
+        dict[str, str]: A dictionary with values used for
+            evaluation.
+    """
+    pair = {
+        "sentences": [raw_dict["caption_0"], raw_dict["caption_1"]],
+        "prefixes": [None, None],
+        "completions": [raw_dict["caption_0"], raw_dict["caption_1"]],
+        "label": 0,
+        "UID": "WinoGround",
+        "Type": raw_dict["collapsed_tag"],
+        "Linguistic Feature": raw_dict["tag"],
+        "Linguistic Sub-Feature": " ".join([raw_dict["tag"], raw_dict["secondary_tag"]]),
+        "image": images[raw_dict["image_idx"]][raw_dict["image_key"]].convert("RGB"),
     }
 
     return pair
