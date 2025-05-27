@@ -87,7 +87,7 @@ def process_results(args: argparse.ArgumentParser, results: dict):
 
     # Average accuracies
     average_accuracies = {}
-    if args.task in ["blimp", "ewok", "wug"]:
+    if args.task != "entity_tracking":
         for temp, accuracy in accuracies.items():
             average_accuracies[temp] = sum(accuracy["UID"].values()) / len(accuracy["UID"].values())
     else:

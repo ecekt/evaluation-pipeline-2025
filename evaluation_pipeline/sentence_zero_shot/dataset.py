@@ -430,7 +430,6 @@ def get_causal_collate_fn(pad_idx, image_processor):
             images = None
         else:
             images = image_processor(images, return_tensors="pt")["pixel_values"]
-            print(images.shape)
         return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
     return collate_fn
 
