@@ -34,8 +34,6 @@ def parse_args():
     args.output_dir /= "zero_shot"
     args.output_dir /= args.backend
     args.output_dir /= "reading"
-    if args.backend in ["mlm", "mntp"]:
-        args.output_dir /= f"{args.number_of_mask_tokens_to_append}_mask_tokens"
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -93,6 +91,13 @@ if __name__ == "__main__":
     with pred_file.open("w") as fj:
         for index, row in df.iterrows():
             print(json.dumps({"Index": index, "Sentence": row["item"], "Word": row["word"], "Logprob": row["pred"], "Prev_Logprob": row["prev_pred"]}), file=fj)
+
+    pred_file = args.output_dir / "predictions.json"
+    with pred_file.open("w") as fj:
+        preds_dict = {"reading": {"predictions": []}}
+        for index, row in df.iterrows():
+            preds_dict["reading"]["predictions"].append({"id": index, "pred": row["pred"]})
+        json.dump(preds_dict, fj)
 
     variables = ['RTfirstfix', 'RTfirstpass', 'RTgopast', 'RTrightbound', 'self_paced_reading_time',  'ELAN', 'LAN', 'N400', 'P600', 'EPNP', 'PNP']
 
