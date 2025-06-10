@@ -190,3 +190,6 @@ old_code/
 
 # Weights and Biases
 wandb/
+
+# Jupyter files
+*.ipynb
