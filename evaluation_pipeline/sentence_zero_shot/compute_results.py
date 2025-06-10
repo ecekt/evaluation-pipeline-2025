@@ -102,6 +102,9 @@ def compute_causal_results(args, model, dataloader, temperatures):
             else:
                 logits = logits["logits"]  # BxTxV
 
+            if logits.size(1) != sentence_dict[f"{prefix}_inputs"].size(1):  # Assumption is that images are prepended to the text when done post-tokenization.
+                logits = logits[:, -sentence_dict[f"{prefix}_inputs"].size(1):]
+
             for temp in subset_to_stats:
                 log_probs = F.log_softmax(logits / temp, dim=-1)
                 target_log_probs = torch.gather(log_probs, -1, sentence_dict[f"{prefix}_targets"].to(DEVICE).unsqueeze(-1)).squeeze(-1)
@@ -166,6 +169,9 @@ def compute_mlm_results(args, model, dataloader, temperatures):
                     logits = logits[0]  # BxTxV
                 else:
                     logits = logits["logits"]  # BxTxV
+
+                if logits.size(1) != sentence_dict[f"{prefix}_inputs"].size(1):  # Assumption is that images are prepended to the text when done post-tokenization.
+                    logits = logits[:, -sentence_dict[f"{prefix}_inputs"].size(1):]
 
                 minibatch_indices = torch.arange(logits.shape[0]).to(DEVICE)
                 masked_logits = logits[minibatch_indices, indices]  # BxV
@@ -248,11 +254,11 @@ def compute_enc_dec_mask_results(args, model, dataloader, temperatures):
                         pixel_values=images.to(DEVICE),
                     )
                 if isinstance(logits, tuple):
-                    logits = logits[0]  # Bx1xV
+                    logits = logits[0]  # BxTxV
                 else:
-                    logits = logits["logits"]  # Bx1xV
+                    logits = logits["logits"]  # BxTxV
 
-                masked_logits = logits[:, 0]  # BxV
+                masked_logits = logits[:, -1]  # BxV
 
                 for temp in subset_to_stats:
                     log_probs = F.log_softmax(masked_logits / temp, dim=-1)
@@ -323,7 +329,8 @@ def compute_enc_dec_prefix_results(args, model, dataloader, temperatures):
 
             for temp in subset_to_stats:
                 log_probs = F.log_softmax(logits / temp, dim=-1)
-                target_log_probs = torch.gather(log_probs, -1, sentence_dict[f"{prefix}_targets"].to(DEVICE).unsqueeze(-1)).squeeze(-1)
+                start_pred_token = log_probs.size(1) - sentence_dict[f"{prefix}_targets"].size(1)
+                target_log_probs = torch.gather(log_probs[:, start_pred_token:], -1, sentence_dict[f"{prefix}_targets"].to(DEVICE).unsqueeze(-1)).squeeze(-1)
                 phrase_log_probs = torch.sum(target_log_probs * sentence_dict[f"{prefix}_phrase_mask"].to(DEVICE), dim=1)
                 all_log_probs[temp].append(phrase_log_probs.cpu())
 

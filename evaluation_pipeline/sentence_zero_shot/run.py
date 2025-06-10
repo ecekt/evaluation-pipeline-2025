@@ -10,7 +10,7 @@ from _io import TextIOWrapper
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSeq2SeqLM
 import torch
 
-from evaluation_pipeline.sentence_zero_shot.dataset import get_dataloader
+from evaluation_pipeline.sentence_zero_shot.dataset_v2 import get_dataloader
 from evaluation_pipeline.sentence_zero_shot.compute_results import compute_results
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -28,6 +28,7 @@ def _parse_arguments():
     parser.add_argument("--output_dir", default="results", type=pathlib.Path, help="Path to the data directory")
     parser.add_argument("--images_path", default=None, type=str, help="Path or HuggingFace repository name to the images for the task.")
     parser.add_argument("--image_split", default=None, type=str, help="The data split from a HuggingFace repository to use for the images source.")
+    parser.add_argument("--image_template", default=None, type=str, help="Template of how to imbed the image to the text. (In cases where this is not handled within the model).")
 
     parser.add_argument("--revision_name", default=None, type=str, help="Name of the checkpoint/version of the model to test. (If None, the main will be used)")
 
@@ -141,6 +142,8 @@ def save_predictions(args, predictions, best_temp):
 
 def main():
     args = _parse_arguments()
+    if args.images_path is not None:
+        assert args.batch_size == 1, "Multimodal only works in batch size 1!"
     dataset = args.data_path.stem
     args.model_name = pathlib.Path(args.model_path_or_name).stem
     if args.revision_name is None:
