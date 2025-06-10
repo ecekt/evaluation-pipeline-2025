@@ -229,8 +229,9 @@ def decode_vqa(raw_dict: dict[str, Any], images: Dataset) -> dict[str, str]:
         "completions": [" " + raw_dict["target_ans"]] + [" " + answer for answer in raw_dict["distractors"]],
         "label": 0,
         "UID": "VQA",
-        "image": images[raw_dict["idx_in_hf_dataset"]]["image"].convert("RGB"),
     }
+    if images is not None:
+        pair["image"] = images[raw_dict["idx_in_hf_dataset"]]["image"].convert("RGB")
 
     return pair
 
@@ -251,15 +252,16 @@ def decode_winoground(raw_dict: dict[str, Any], images: Dataset) -> dict[str, st
             evaluation.
     """
     pair = {
-        "sentences": [raw_dict["caption_0"], raw_dict["caption_1"]],
-        "prefixes": [None, None],
-        "completions": [raw_dict["caption_0"], raw_dict["caption_1"]],
-        "label": 0,
-        "UID": "WinoGround",
-        "Type": raw_dict["collapsed_tag"],
-        "Linguistic Feature": raw_dict["tag"],
-        "Linguistic Sub-Feature": " ".join([raw_dict["tag"], raw_dict["secondary_tag"]]),
-        "image": images[raw_dict["image_idx"]][raw_dict["image_key"]].convert("RGB"),
-    }
+            "sentences": [raw_dict["caption_0"], raw_dict["caption_1"]],
+            "prefixes": [None, None],
+            "completions": [raw_dict["caption_0"], raw_dict["caption_1"]],
+            "label": 0,
+            "UID": "WinoGround",
+            "Type": raw_dict["collapsed_tag"],
+            "Linguistic Feature": raw_dict["tag"],
+            "Linguistic Sub-Feature": " ".join([raw_dict["tag"], raw_dict["secondary_tag"]]),
+        }
+    if images is not None:
+        pair["image"] = images[raw_dict["image_idx"]][raw_dict["image_key"]].convert("RGB")
 
     return pair
