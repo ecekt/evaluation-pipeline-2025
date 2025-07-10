@@ -193,3 +193,6 @@ wandb/
 
 # Jupyter files
 *.ipynb
+
+# Target Data
+target_data/
