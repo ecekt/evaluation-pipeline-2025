@@ -10,6 +10,7 @@ def _parse_arguments() -> argparse.Namespace:
 
     # Required parameters
     parser.add_argument("--model_path_or_name", required=True, type=Path, help="Name of the model to collate the results from")
+    parser.add_argument("--backend", required=True, type=str, help="The backend used during evaluation", choices=["mlm", "causal", "mntp", "enc_dec_mask", "enc_dec_prefix"])
 
     parser.add_argument("--results_dir", default="results", type=Path, help="Path to the results directory.")
     parser.add_argument("--evaluation_data_dir", default="evaluation_data", type=Path, help="Path to the evaluation data directory.")
@@ -152,7 +153,7 @@ if __name__ == "__main__":
     args = _parse_arguments()
     path_to_results = args.results_dir / args.model_path_or_name.stem / args.revision_name
     if args.fast:
-        path_to_results = path_to_results / "all_fast_preds.json"
+        path_to_results = path_to_results / f"all_fast_preds_{args.backend}.json"
         all_results = json.load(path_to_results.open("r"))
         evaluation_path = args.evaluation_data_dir / "fast_eval"
         print("###### RESULTS ######")
@@ -177,7 +178,7 @@ if __name__ == "__main__":
         print(f"READING (SPR)\t{scores[0]:.2f}")
         print(f"READING (ET)\t{scores[1]:.2f}")
     else:
-        path_to_results = path_to_results / "all_full_preds.json"
+        path_to_results = path_to_results / f"all_full_preds_{args.backend}.json"
         all_results = json.load(path_to_results.open("r"))
         evaluation_path = args.evaluation_data_dir / "full_eval"
         print("###### RESULTS ######")

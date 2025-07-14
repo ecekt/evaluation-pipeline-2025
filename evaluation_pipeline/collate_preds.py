@@ -254,20 +254,20 @@ def _check_size(task: str, results: dict[str, dict[str, list[dict[str, str | int
             if task == "entity_tracking":
                 if len(res["predictions"]) != FAST_SIZES[task][key]:
                     valid = False
-                    print(f"The sub-data {key} from {task} has {len(res["predictions"])} datapoints, when it should have {FAST_SIZES[task][key]} datapoints!")
+                    print(f"The sub-data {key} from {task} has {len(res['predictions'])} datapoints, when it should have {FAST_SIZES[task][key]} datapoints!")
             else:
                 if len(res["predictions"]) != FAST_SIZES[task]:
                     valid = False
-                    print(f"The sub-data {key} from {task} has {len(res["predictions"])} datapoints, when it should have {FAST_SIZES[task]} datapoints!")
+                    print(f"The sub-data {key} from {task} has {len(res['predictions'])} datapoints, when it should have {FAST_SIZES[task]} datapoints!")
         else:
             if isinstance(FULL_SIZES[task], dict):
                 if len(res["predictions"]) != FULL_SIZES[task][key]:
                     valid = False
-                    print(f"The sub-data {key} from {task} has {len(res["predictions"])} datapoints, when it should have {FULL_SIZES[task][key]} datapoints!")
+                    print(f"The sub-data {key} from {task} has {len(res['predictions'])} datapoints, when it should have {FULL_SIZES[task][key]} datapoints!")
             else:
                 if len(res["predictions"]) != FULL_SIZES[task]:
                     valid = False
-                    print(f"The sub-data {key} from {task} has {len(res["predictions"])} datapoints, when it should have {FULL_SIZES[task]} datapoints!")
+                    print(f"The sub-data {key} from {task} has {len(res['predictions'])} datapoints, when it should have {FULL_SIZES[task]} datapoints!")
     return valid
 
 
@@ -284,7 +284,7 @@ def collate_preds(args: argparse.Namespace) -> None:
     if args.fast:
         full_results = {}
         main_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / "zero_shot" / args.backend
-        output_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / "all_fast_preds.json"
+        output_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / f"all_fast_preds_{args.backend}.json"
 
         # BLiMP
         blimp_results: dict[str, dict[str, list[dict[str, str | int | float]]]] = _load_results(main_path / "blimp" / "blimp_fast" / "predictions.json")
@@ -322,7 +322,7 @@ def collate_preds(args: argparse.Namespace) -> None:
         full_results = {}
         zero_main_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / "zero_shot" / args.backend
         fine_main_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / "finetune"
-        output_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / "all_full_preds.json"
+        output_path: pathlib.Path = args.results_dir / args.model_path_or_name.stem / args.revision_name / f"all_full_preds_{args.backend}.json"
 
         # BLiMP
         blimp_results: dict[str, dict[str, list[dict[str, str | int | float]]]] = _load_results(zero_main_path / "blimp" / "blimp_filtered" / "predictions.json")
