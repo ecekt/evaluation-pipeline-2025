@@ -10,7 +10,7 @@ from _io import TextIOWrapper
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoModelForSeq2SeqLM
 import torch
 
-from evaluation_pipeline.sentence_zero_shot.dataset_v2 import get_dataloader
+from evaluation_pipeline.sentence_zero_shot.dataset import get_dataloader
 from evaluation_pipeline.sentence_zero_shot.compute_results import compute_results
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')

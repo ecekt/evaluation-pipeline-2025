@@ -444,7 +444,7 @@ def get_causal_collate_fn(pad_idx):
     return collate_fn
 
 
-def get_mlm_collate_fn(pad_idx, image_processor):
+def get_mlm_collate_fn(pad_idx):
     def collate_fn(batch):
         # Pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("tokens")])
@@ -487,7 +487,7 @@ def get_mlm_collate_fn(pad_idx, image_processor):
     return collate_fn
 
 
-def get_enc_dec_mask_collate_fn(pad_idx, image_processor):
+def get_enc_dec_mask_collate_fn(pad_idx):
     def collate_fn(batch):
         # Pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("enc_tokens")])
@@ -534,7 +534,7 @@ def get_enc_dec_mask_collate_fn(pad_idx, image_processor):
     return collate_fn
 
 
-def get_enc_dec_prefix_collate_fn(pad_idx, image_processor):
+def get_enc_dec_prefix_collate_fn(pad_idx):
     def collate_fn(batch):
         # First pad the tensors
         num_sentences = len([key for key in batch[0][1].keys() if key.endswith("dec_tokens")])
