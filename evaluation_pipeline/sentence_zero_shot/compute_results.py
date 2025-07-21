@@ -170,8 +170,8 @@ def compute_mlm_results(args, model, dataloader, temperatures):
                 else:
                     logits = logits["logits"]  # BxTxV
 
-                if logits.size(1) != sentence_dict[f"{prefix}_inputs"].size(1):  # Assumption is that images are prepended to the text when done post-tokenization.
-                    logits = logits[:, -sentence_dict[f"{prefix}_inputs"].size(1):]
+                if logits.size(1) != sentence_dict[f"{prefix}_tokens"].size(1):  # Assumption is that images are prepended to the text when done post-tokenization.
+                    logits = logits[:, -sentence_dict[f"{prefix}_tokens"].size(1):]
 
                 minibatch_indices = torch.arange(logits.shape[0]).to(DEVICE)
                 masked_logits = logits[minibatch_indices, indices]  # BxV
