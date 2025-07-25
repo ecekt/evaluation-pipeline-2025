@@ -1,7 +1,7 @@
 #!/bin/bash
 
 MODEL_PATH=$1
-REVISION_NAME=${2:-"main"}
+REVISION_NAME=$2
 BACKEND=$3
 EVAL_DIR=${4:-"evaluation_data/fast_eval"}
 

@@ -281,8 +281,23 @@ For the submiting the checkpoints we encourage creating multiple branches in a H
 This year we require both the evaluation of the final model, on a set of full evaluation (which include the finetuning). And the evaluation of all the checkpoints mentioned above (or up until the one you trained, if for example you only train for 20M words then we require: 1M, 2M, ..., 10M, 20M) on a set of fast tasks, that do not include finetuning and are a subsampled set of the full evaluations.
 
 ### Submission Format
-> [!Note]
-> To Be Announced!
+To create a submission file to the leaderboard or challenge use the following command:
+```bash
+python -m evaluation_pipeline.collate_preds --model_path_or_name=NAME_OF_YOUR_MODEL --backend=BACKEND
+```
+you can use the flag `--fast` to collate the results for the fast evaluations.
+Make sure that all the evaluations have been run before collating them.
+
+
+The submission is a JSON file where the first key represents the benchmark, the next the task of the benchmark, and the value either the label as a number (for GLUE tasks) or the predicted sentences for the zero-shot tasks. An example is:
+
+```
+{"glue": {"boolq": {"predictions": [{"id": "boolq_0", "pred": 0}, {"id": "boolq_1", "pred": 1}, ...]}}}
+```
+
+### Leaderboard
+You can find the leaderboard for the non-hidden tasks [here](https://huggingface.co/spaces/BabyLM-community/babylm-leaderboard-2025).
+
 
 ----
 ## Visualizing Results

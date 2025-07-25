@@ -105,9 +105,9 @@ class ModelForSequenceClassification(nn.Module):
             batch_size = attention_mask.size(0)
             decoder_input_ids = input_data.new_full((batch_size, 1), self.decoder_start_token_id)
             decoder_attention_mask = attention_mask.new_ones((batch_size, 1))
-            output_transformer: Any = self.transformer(input_data, attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask)
+            output_transformer: Any = self.transformer(input_ids=input_data, attention_mask=attention_mask, decoder_input_ids=decoder_input_ids, decoder_attention_mask=decoder_attention_mask)
         else:
-            output_transformer = self.transformer(input_data, attention_mask)
+            output_transformer = self.transformer(input_ids=input_data, attention_mask=attention_mask)
         if type(output_transformer) is tuple:
             encoding: torch.Tensor = output_transformer[0]
         elif isinstance(output_transformer, ModelOutput):

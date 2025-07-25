@@ -19,12 +19,12 @@ def _parse_arguments() -> argparse.Namespace:
 
     # Required Parameters
     parser.add_argument("--results_dir", default="results", type=pathlib.Path, help="The output directory where the results will be written.")
-    parser.add_argument("--train_data", default="glue/data/mnli.subs.jsonl", type=pathlib.Path, help="Path to file containing the training dataset, we expect it to be in a JSONL format.")
-    parser.add_argument("--model_name_or_path", default="ltg/gpt-bert-babylm-small", type=pathlib.Path, help="The local path to the model binary.")
+    parser.add_argument("--train_data", required=True, type=pathlib.Path, help="Path to file containing the training dataset, we expect it to be in a JSONL format.")
+    parser.add_argument("--model_name_or_path", required=True, type=pathlib.Path, help="The local path to the model binary.")
     parser.add_argument("--metrics", default=["accuracy"], nargs='+', help="List of metrics to evaluate for the model (accuracy, f1, and mcc).", choices=["accuracy", "f1", "mcc"])
-    parser.add_argument("--num_labels", default=3, type=int, help="The number of labels in the dataset. (3 for MNLI, 2 for all other tasks)")
+    parser.add_argument("--num_labels", required=True, type=int, help="The number of labels in the dataset. (3 for MNLI, 2 for all other tasks)")
     parser.add_argument("--seed", default=42, type=int, help="The seed for the Random Number Generator.")
-    parser.add_argument("--task", default="mnli", type=str, help="The task to fine-tune for.")
+    parser.add_argument("--task", required=True, type=str, help="The task to fine-tune for.")
 
     # Optinal Parameters
     parser.add_argument("--ema_decay", default=0.0, type=float, help="If using EMA, this is the decay rate per step. (If it is 0 then there is no ema_decay)")

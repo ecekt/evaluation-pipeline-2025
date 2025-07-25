@@ -82,7 +82,6 @@ class Trainer():
 
         self.model.to(self.device)
         self.ema_model.to(self.device)
-        
         self.tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(self.args.model_name_or_path)
 
     def load_data(self: Trainer) -> None:
