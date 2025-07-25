@@ -296,7 +296,7 @@ The submission is a JSON file where the first key represents the benchmark, the 
 ```
 
 ### Leaderboard
-You can find the leaderboard for the non-hidden tasks [here](https://huggingface.co/spaces/BabyLM-community/babylm-leaderboard-2025).
+You can find the leaderboard for the non-hidden tasks [here](https://huggingface.co/spaces/BabyLM-community/babylm-leaderboard-2025-no-hidden-tasks).
 
 
 ----
