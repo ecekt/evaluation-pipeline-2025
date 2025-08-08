@@ -14,7 +14,7 @@ from evaluation_pipeline.sentence_zero_shot.dataset import get_dataloader
 from evaluation_pipeline.sentence_zero_shot.compute_results import compute_results
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
+# DEVICE = torch.device('cpu')
 
 def _parse_arguments():
     parser = argparse.ArgumentParser()
@@ -23,7 +23,7 @@ def _parse_arguments():
     parser.add_argument("--data_path", required=True, type=pathlib.Path, help="Path to the data directory")
     parser.add_argument("--task", required=True, type=str, help="The task that is being evaluated.", choices=["blimp", "ewok", "entity_tracking", "wug_adj", "wug_past", "comps", "vqa", "winoground"])
     parser.add_argument("--model_path_or_name", required=True, type=str, help="Path to the model to evaluate.")
-    parser.add_argument("--backend", required=True, type=str, help="The evaluation backend strategy", choices=["mlm", "causal", "mntp", "enc_dec_mask", "enc_dec_prefix"])
+    parser.add_argument("--backend", required=True, type=str, help="The evaluation backend strategy", choices=["mlm", "causal", "mntp", "enc_dec_mask", "enc_dec_prefix", "causal_babyllava"])
 
     parser.add_argument("--output_dir", default="results", type=pathlib.Path, help="Path to the data directory")
     parser.add_argument("--images_path", default=None, type=str, help="Path or HuggingFace repository name to the images for the task.")
@@ -50,6 +50,28 @@ def get_model(args: argparse.ArgumentParser):
         model = AutoModelForCausalLM.from_pretrained(args.model_path_or_name, trust_remote_code=True, revision=args.revision_name)
     elif args.backend in ["enc_dec_mask", "enc_dec_prefix"]:
         model = AutoModelForSeq2SeqLM.from_pretrained(args.model_path_or_name, trust_remote_code=True, revision=args.revision_name)
+    elif args.backend == "causal_babyllava":
+        from transformers import AutoModel, AutoTokenizer, AutoImageProcessor
+        from babyllava_pooled.modeling_llava import LlavaForConditionalGeneration
+        from babyllava_pooled.processing_llava import LlavaProcessor
+
+        path_checkpoint_folder = args.model_path_or_name
+
+        tokenizer_trained = AutoTokenizer.from_pretrained(path_checkpoint_folder, trust_remote_code=True)
+
+        model = LlavaForConditionalGeneration.from_pretrained(path_checkpoint_folder, use_safetensors=True)
+
+        # see modeling_llava.py -> self.vision_tower to actually change the vision model
+        vision_model_path = 'facebook/dinov2-large'
+        processor = AutoImageProcessor.from_pretrained(vision_model_path)
+        vision_tower = AutoModel.from_pretrained(vision_model_path)
+
+        processor_llava = LlavaProcessor(image_processor=processor, tokenizer=tokenizer_trained,
+                                         patch_size=14)
+        model = model.to(DEVICE)
+        model.eval()
+        vision_tower.to(DEVICE)
+        return model, tokenizer_trained, vision_tower, processor, processor_llava
     else:
         raise f"The backend {args.backend} is not implemented, please implemented yourself or raise an issue on the GitHub!"
     model = model.to(DEVICE)
@@ -169,8 +191,12 @@ def main():
     args.output_path.mkdir(parents=True, exist_ok=True)
 
     # Get results
-    model = get_model(args)
-    dataloader = get_dataloader(args)
+    if args.backend == "causal_babyllava":
+        model, tokenizer_trained, vision_tower, processor, processor_llava = get_model(args)
+        dataloader = get_dataloader(args, tokenizer=tokenizer_trained, vision_tower=vision_tower, processor=processor, processor_llava=processor_llava)
+    else:
+        model = get_model(args)
+        dataloader = get_dataloader(args, model=model)
     temperatures = get_temperatures(args)
     results, predictions = compute_results(args, model, dataloader, temperatures)
 

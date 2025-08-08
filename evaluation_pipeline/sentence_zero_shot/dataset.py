@@ -16,26 +16,88 @@ if TYPE_CHECKING:
     from PIL.Image import Image
     from transformers.processing_utils import ProcessorMixin
 
+from typing import List, Optional, Tuple, Union
+from PIL import Image
+
+
+def get_image_features(
+        pretrained_vision_tower,
+        pixel_values: torch.FloatTensor,
+        vision_feature_layer: Union[int, List[int]],
+        vision_feature_select_strategy: str,
+        **kwargs,
+):
+    """
+    Obtains image last hidden states from the vision tower and apply multimodal projection.
+
+    Args:
+        pixel_values (`torch.FloatTensor]` of shape `(batch_size, channels, height, width)`)
+           The tensors corresponding to the input images.
+        vision_feature_layer (`Union[int, List[int]]`):
+            The index of the layer to select the vision feature. If multiple indices are provided,
+            the vision feature of the corresponding indices will be concatenated to form the
+            vision features.
+        vision_feature_select_strategy (`str`):
+            The feature selection strategy used to select the vision feature from the vision backbone.
+            Can be one of `"default"` or `"full"`
+    Returns:
+        image_features (`torch.Tensor`): Image feature tensor of shape `(num_images, image_length, embed_dim)`).
+    """
+    if vision_feature_select_strategy not in ["default", "full"]:
+        raise ValueError(f"Unexpected select feature strategy: {vision_feature_select_strategy}")
+
+    kwargs = {k: v for k, v in kwargs.items() if v is not None}
+    # this is not memory efficient at all (output_hidden_states=True) will save all the hidden states.
+    image_outputs = pretrained_vision_tower(pixel_values, output_hidden_states=True, **kwargs)
+
+    # If we have one vision feature layer, return the corresponding hidden states,
+    # otherwise, select the hidden states of each feature layer and concatenate them
+    if isinstance(vision_feature_layer, int):
+        selected_image_feature = image_outputs.hidden_states[vision_feature_layer]
+        if vision_feature_select_strategy == "default":
+            selected_image_feature = selected_image_feature[:, 1:]
+    else:
+        hs_pool = [image_outputs.hidden_states[layer_idx] for layer_idx in vision_feature_layer]
+        # For default; crop CLS from each hidden state in the hidden state pool
+        if vision_feature_select_strategy == "default":
+            hs_pool = [hs[:, 1:] for hs in hs_pool]
+        selected_image_feature = torch.cat(hs_pool, dim=-1)
+
+    # pool for babyllava
+    selected_image_feature = torch.mean(selected_image_feature, dim=1)
+    # image_features = self.multi_modal_projector(selected_image_feature)
+    # I will do this manually
+    image_features = selected_image_feature
+    return image_features
+
 
 class CompletionRankingDataset(Dataset):
 
-    def __init__(self: CompletionRankingDataset, args: argparse.Namespace):
+    def __init__(self: CompletionRankingDataset, args: argparse.Namespace, tokenizer,
+                 vision_tower, processor, processor_llava):
         self.backend: str = args.backend
-        self.processor: ProcessorMixin = AutoProcessor.from_pretrained(args.model_path_or_name, padding_side="right", revision=args.revision_name, trust_remote_code=True)
-        self.tokenizer = self.processor.tokenizer if hasattr(self.processor, "tokenizer") else self.processor
+        # self.processor: ProcessorMixin = AutoProcessor.from_pretrained(args.model_path_or_name, padding_side="left", revision=args.revision_name, trust_remote_code=True)
+        # self.tokenizer = self.processor.tokenizer if hasattr(self.processor, "tokenizer") else self.processor
 
-        if self.tokenizer.pad_token_id is None:
-            if self.backend == "causal":
-                self.tokenizer.pad_token_id: int = self.tokenizer.eos_token_id
-            else:
-                self.tokenizer.pad_token_id = self.tokenizer.cls_token_id
+        self.tokenizer = tokenizer
+        self.vision_tower = vision_tower
+        self.processor = processor
+        self.processor_llava = processor_llava
 
-        self.image_token = None
-        if args.image_template is not None:
-            with open("evaluation_pipeline/templates/image_template.json", "r") as image_template_file:
-                image_templates = json.load(image_template_file)
-                self.image_template = image_templates[args.image_template]
-            self.image_token = self.tokenizer.image_token
+        #
+        # if self.tokenizer.pad_token_id is None:
+        #     if self.backend == "causal":
+        #         self.tokenizer.pad_token_id: int = self.tokenizer.eos_token_id
+        #     else:
+        #         self.tokenizer.pad_token_id = self.tokenizer.cls_token_id
+        #
+        # self.image_token = None
+        # if args.image_template is not None:
+        #     with open("evaluation_pipeline/templates/image_template.json", "r") as image_template_file:
+        #         image_templates = json.load(image_template_file)
+        #         self.image_template = image_templates[args.image_template]
+        #     self.image_token = self.tokenizer.image_token
+        self.image_token = '<image>'
 
         # Load and process the data
         self.data: list[dict[str, str | int | list[str] | list[None] | Image]] = read_files(args)
@@ -96,6 +158,64 @@ class CompletionRankingDataset(Dataset):
             processed_sentence_dict[f'sentence_{sentence_idx}_image'] = embed_image
 
         return processed_sentence_dict
+
+
+    def process_causalBBLV_sentences(self: CompletionRankingDataset, sentence_dict: dict[str, list[str] | list[None]], image: Image | None):
+        """Helper function for processing the dictionary associated with an individual
+        datapoint for inference with a causal LM.
+
+        Args:
+            sentence_dict (dict[str, Any]): The dictionary associated with the datapoint
+        """
+        sentences = sentence_dict["sentences"]
+        completions = sentence_dict["completions"]
+
+        processed_sentence_dict = {}
+        for sentence_idx, (sentence, completion) in enumerate(zip(sentences, completions)):
+            # Basic outputs
+            prompt = "<image> " + sentence
+            if image is None:
+                # black image instead
+                image = Image.open('black_image.png')
+
+            pix = self.processor(images=image, return_tensors="pt").to(self.vision_tower.device)
+            img_features = get_image_features(pretrained_vision_tower=self.vision_tower, pixel_values=pix["pixel_values"],
+                                             vision_feature_layer=-2,
+                                             vision_feature_select_strategy='default')
+            tokenizer_output = self.processor_llava(images=image, text=prompt, return_offsets_mapping=True)
+            sentence_tokens = self.tokenizer(text=sentence, return_offsets_mapping=True)["input_ids"]
+
+            tokens = tokenizer_output["input_ids"]
+            attention_mask = tokenizer_output["attention_mask"]
+            offset_mapping = tokenizer_output['offset_mapping']
+            embed_image = img_features
+            if len(tokens) == 1 and len(sentence) != 0:
+                # if sentence_tokens:
+                #     sentence_tokens = sentence_tokens[0]
+                tokens = tokens[0]
+                attention_mask = attention_mask[0]
+                offset_mapping = offset_mapping[0]
+
+            # Phrase mask (to determine the exact tokens associated with the completion/suffix)
+            start_idx = len(tokens) - len(sentence_tokens)
+            start_char_idx = len(sentence) - len(completion) + offset_mapping[start_idx][0]
+            phrase_indices = []
+            for i, (start, end) in enumerate(offset_mapping[start_idx:]):
+                # If token overlaps with our phrase's character span
+                if end > start_char_idx:
+                    phrase_indices.append(i+start_idx)
+
+            phrase_mask = [0 for _ in range(len(tokens))]
+            for token_idx in phrase_indices:
+                phrase_mask[token_idx] = 1
+
+            processed_sentence_dict[f'sentence_{sentence_idx}_tokens'] = torch.LongTensor(tokens)
+            processed_sentence_dict[f'sentence_{sentence_idx}_attn_mask'] = torch.LongTensor(attention_mask)
+            processed_sentence_dict[f'sentence_{sentence_idx}_phrase_mask'] = torch.LongTensor(phrase_mask)
+            processed_sentence_dict[f'sentence_{sentence_idx}_image'] = embed_image
+
+        return processed_sentence_dict
+
 
     def process_mlm_sentences(self, sentence_dict: dict[str, list[str] | list[None]], image: Image | None):
         """Helper function for processing the dictionary associated with an individual
@@ -365,6 +485,9 @@ class CompletionRankingDataset(Dataset):
             processed_sentence_dict = self.process_enc_dec_mask_sentences(sentence_dict, image)
         elif self.backend == "enc_dec_prefix":
             processed_sentence_dict = self.process_enc_dec_prefix_sentences(sentence_dict, image)
+        elif self.backend == "causal_babyllava":
+            processed_sentence_dict: dict[str, torch.Tensor | None] = self.process_causalBBLV_sentences(sentence_dict,
+                                                                                                    image)
 
         return sentence_dict, processed_sentence_dict, label, metadata, uid
 
@@ -406,6 +529,45 @@ def get_collate_fn(args: argparse.ArgumentParser, pad_idx: int):
         return get_enc_dec_mask_collate_fn(pad_idx)
     elif args.backend == "enc_dec_prefix":
         return get_enc_dec_prefix_collate_fn(pad_idx)
+    elif args.backend == "causal_babyllava":
+        # For BabyLLava, we start with the same collate function as causal
+        return get_causalBBLV_collate_fn(pad_idx)
+
+
+def get_causalBBLV_collate_fn(pad_idx):
+    def collate_fn(batch):
+        # First pad the tensors
+        num_sentences = len([key for key in batch[0][1].keys() if key.endswith("tokens")])
+        sentence_dict_with_padding = {}
+        for sentence_idx in range(num_sentences):
+            # Tokens
+            tokens = [item[1][f'sentence_{sentence_idx}_tokens'] for item in batch]
+            padded_tokens = pad_sequence(tokens, batch_first=True, padding_value=pad_idx, padding_side="left")
+            sentence_dict_with_padding[f'sentence_{sentence_idx}_inputs'] = padded_tokens[:, :-1]
+            sentence_dict_with_padding[f'sentence_{sentence_idx}_targets'] = padded_tokens[:, 1:]
+
+            # Attention mask
+            attention_masks = [item[1][f'sentence_{sentence_idx}_attn_mask'] for item in batch]
+            sentence_dict_with_padding[f'sentence_{sentence_idx}_attn_mask'] = pad_sequence(attention_masks, batch_first=True, padding_value=0, padding_side="left")[:, :-1]
+
+            # Phrase mask
+            phrase_masks = [item[1][f'sentence_{sentence_idx}_phrase_mask'] for item in batch]
+            sentence_dict_with_padding[f'sentence_{sentence_idx}_phrase_mask'] = pad_sequence(phrase_masks, batch_first=True, padding_value=0, padding_side="left")[:, 1:]
+
+            # Images
+            images = [item[1][f'sentence_{sentence_idx}_image'] for item in batch]
+            if all(image is None for image in images):
+                images = None
+            else:
+                images = torch.cat(images, dim=0)
+
+        # Next handle the labels and metadata
+        sentence_dict = [item[0] for item in batch]
+        labels = [item[2] for item in batch]
+        metadatas = [item[3] for item in batch]
+        uids = [item[4] for item in batch]
+        return sentence_dict, sentence_dict_with_padding, labels, metadatas, uids, images
+    return collate_fn
 
 
 def get_causal_collate_fn(pad_idx):
@@ -575,14 +737,16 @@ def get_enc_dec_prefix_collate_fn(pad_idx):
     return collate_fn
 
 
-def get_dataloader(args):
+def get_dataloader(args, tokenizer,
+                 vision_tower, processor, processor_llava):
     """This function constructs the dataset and associated dataloader with collation functions specialized
     to the model backend.
 
     Args:
         args (argparse.Namespace): Command-line arguments
     """
-    dataset = CompletionRankingDataset(args)
+    dataset = CompletionRankingDataset(args, tokenizer,
+                 vision_tower, processor, processor_llava)
     pad_idx = dataset.tokenizer.pad_token_id
     collate_fn = get_collate_fn(args, pad_idx)
     dataloader = DataLoader(dataset, args.batch_size, shuffle=False, collate_fn=collate_fn)

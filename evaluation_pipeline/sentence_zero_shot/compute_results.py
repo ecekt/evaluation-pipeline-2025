@@ -13,7 +13,7 @@ from tqdm import tqdm
 import argparse
 
 DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
+# DEVICE = torch.device('cpu')
 
 def compute_results(args: argparse.ArgumentParser, model: torch.nn.Module, dataloader: DataLoader, temperatures: list[float]):
     """This function takes as input a model, a dataloader for a given evaluation task and
@@ -41,6 +41,8 @@ def compute_results(args: argparse.ArgumentParser, model: torch.nn.Module, datal
             return compute_enc_dec_mask_results(args, model, dataloader, temperatures)
         elif args.backend == "enc_dec_prefix":
             return compute_enc_dec_prefix_results(args, model, dataloader, temperatures)
+        elif args.backend == "causal_babyllava":
+            return compute_causalBBLV_results(args, model, dataloader, temperatures)
 
 
 def update_subset_to_stats(subset_to_stats, metadatas):
@@ -96,6 +98,63 @@ def rank_and_evaluate_wug(args, subset_to_stats, all_log_probs, raw_sentences, l
                 predictions[temp][uid].append(prediction)
 
         temp_dict["correlation"] = spearmanr(model_ratios, human_ratios)[0]
+
+
+def compute_causalBBLV_results(args, model, dataloader, temperatures):
+    subset_to_stats = {temp : {} for temp in temperatures}
+    predictions = {temp : defaultdict(list) for temp in subset_to_stats}
+    final_predictions = {temp : {} for temp in subset_to_stats}
+    no_image = False
+    # if args.images_path is None:
+    #     no_image = True
+
+    for raw_sentences, sentence_dict, labels, metadatas, uids, images in tqdm(dataloader):
+        update_subset_to_stats(subset_to_stats, metadatas)
+        num_sentences = len([key for key in sentence_dict.keys() if key.endswith("attn_mask")])
+        prefixes = [f'sentence_{sentence_idx}' for sentence_idx in range(num_sentences)]
+
+        # Inference
+        all_log_probs = {temp : [] for temp in subset_to_stats}
+        for prefix in prefixes:
+            if no_image:
+                logits = model(
+                    input_ids=sentence_dict[f"{prefix}_inputs"].to(DEVICE),
+                    attention_mask=sentence_dict[f"{prefix}_attn_mask"].to(DEVICE),
+                )
+            else:
+                logits = model(
+                    input_ids=sentence_dict[f"{prefix}_inputs"].to(DEVICE),
+                    attention_mask=sentence_dict[f"{prefix}_attn_mask"].to(DEVICE),
+                    pixel_values=images.to(DEVICE),
+                )
+            if isinstance(logits, tuple):
+                logits = logits[0]  # BxTxV
+            else:
+                logits = logits["logits"]  # BxTxV
+
+            if logits.size(1) != sentence_dict[f"{prefix}_inputs"].size(1):  # Assumption is that images are prepended to the text when done post-tokenization.
+                logits = logits[:, -sentence_dict[f"{prefix}_inputs"].size(1):]
+
+            for temp in subset_to_stats:
+                log_probs = F.log_softmax(logits / temp, dim=-1)
+                target_log_probs = torch.gather(log_probs, -1, sentence_dict[f"{prefix}_targets"].to(DEVICE).unsqueeze(-1)).squeeze(-1)
+                phrase_log_probs = torch.sum(target_log_probs * sentence_dict[f"{prefix}_phrase_mask"].to(DEVICE), dim=1)
+                all_log_probs[temp].append(phrase_log_probs.cpu())
+
+        if "wug" in args.task:
+            rank_and_evaluate_wug(args, subset_to_stats, all_log_probs, raw_sentences, labels, metadatas, uids, predictions)
+        else:
+            rank_and_evaluate(args, subset_to_stats, all_log_probs, raw_sentences, labels, metadatas, uids, predictions)
+
+    if args.save_predictions:
+        for i in temperatures:
+            temp_pred = dict()
+            for k, v in predictions[i].items():
+                temp_pred[k] = dict()
+                temp_pred[k]["predictions"] = v
+            final_predictions[i] = temp_pred
+
+    return subset_to_stats, final_predictions
 
 
 def compute_causal_results(args, model, dataloader, temperatures):
